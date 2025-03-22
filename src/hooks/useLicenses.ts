@@ -37,40 +37,47 @@ export const useLicenses = (userRole: string, userId: string) => {
     setError(null);
 
     try {
-      let query = supabase.from('licenses').select(`
-        *,
-        profiles:user_id (
-          id,
-          first_name,
-          last_name,
-          email:id (
-            email
-          )
-        )
-      `);
+      // First, let's query just the licenses without the join that's causing issues
+      let query = supabase.from('licenses').select('*');
 
-      // No additional filters for admin, they can see all
       if (userRole === 'reseller') {
-        // Resellers see licenses they created
         query = query.eq('created_by', userId);
       } else if (userRole === 'user') {
-        // Users see only their licenses
         query = query.eq('user_id', userId);
       }
 
-      const { data, error: fetchError } = await query;
+      const { data: licensesData, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
-
-      // Process the data to format it correctly
-      const processedData = data?.map(license => {
-        // Safe type handling - check if profiles is an actual profile or an error
-        let userProfile: UserProfile | null = null;
+      
+      // Now if we need user profile data, fetch it separately for licenses with a user_id
+      const processedData: License[] = [];
+      
+      for (const license of licensesData || []) {
+        let userEmail = 'No user assigned';
+        let userName = 'No user assigned';
         
-        if (license.profiles && 
-            typeof license.profiles === 'object' && 
-            !('error' in license.profiles)) {
-          userProfile = license.profiles as UserProfile;
+        if (license.user_id) {
+          // Fetch the profile for this user_id
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select(`
+              id,
+              first_name,
+              last_name,
+              email:id (
+                email
+              )
+            `)
+            .eq('id', license.user_id)
+            .maybeSingle();
+            
+          if (!profileError && profileData) {
+            userEmail = profileData.email?.email || 'No email';
+            userName = profileData.first_name && profileData.last_name 
+              ? `${profileData.first_name} ${profileData.last_name}`
+              : 'User';
+          }
         }
         
         const formattedLicense: License = {
@@ -81,18 +88,15 @@ export const useLicenses = (userRole: string, userId: string) => {
           created_by: license.created_by,
           created_at: license.created_at,
           expires_at: license.expires_at,
-          // Ensure status is one of the allowed values
           status: (license.status as 'Active' | 'Expired' | 'Suspended') || 'Active',
           metadata: license.metadata,
-          user_email: userProfile?.email?.email || 'No user assigned',
-          user_name: userProfile?.first_name && userProfile?.last_name
-            ? `${userProfile.first_name} ${userProfile.last_name}`
-            : 'No user assigned'
+          user_email: userEmail,
+          user_name: userName
         };
         
-        return formattedLicense;
-      }) || [];
-
+        processedData.push(formattedLicense);
+      }
+      
       setLicenses(processedData);
     } catch (err: any) {
       console.error('Error fetching licenses:', err);
@@ -114,11 +118,9 @@ export const useLicenses = (userRole: string, userId: string) => {
     status?: 'Active' | 'Suspended';
   }) => {
     try {
-      // First, check if the user exists
       let userId = null;
       
       if (data.userEmail) {
-        // Instead of querying auth.users directly, query the profiles table
         const { data: userData, error: userError } = await supabase
           .from('profiles')
           .select(`
@@ -139,7 +141,6 @@ export const useLicenses = (userRole: string, userId: string) => {
         }
       }
       
-      // Generate a license key
       const { data: keyData, error: keyError } = await supabase
         .rpc('generate_license_key');
         
@@ -167,7 +168,6 @@ export const useLicenses = (userRole: string, userId: string) => {
         description: 'New license has been created successfully.'
       });
       
-      // Refresh the licenses
       fetchLicenses();
       
       return newLicense;
@@ -196,7 +196,6 @@ export const useLicenses = (userRole: string, userId: string) => {
         description: 'License has been updated successfully.'
       });
       
-      // Refresh the licenses
       fetchLicenses();
     } catch (err: any) {
       console.error('Error updating license:', err);
@@ -223,7 +222,6 @@ export const useLicenses = (userRole: string, userId: string) => {
         description: 'License has been deleted successfully.'
       });
       
-      // Refresh the licenses
       fetchLicenses();
     } catch (err: any) {
       console.error('Error deleting license:', err);
@@ -238,7 +236,6 @@ export const useLicenses = (userRole: string, userId: string) => {
 
   useEffect(() => {
     fetchLicenses();
-    // Listen for changes to the licenses table
     const channel = supabase
       .channel('schema-db-changes')
       .on(
