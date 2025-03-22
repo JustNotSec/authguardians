@@ -7,6 +7,8 @@ import LoginForm from '@/components/LoginForm';
 const Login = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
+    // Update document title
+    document.title = "Login | BoltzAuth";
   }, []);
 
   return (

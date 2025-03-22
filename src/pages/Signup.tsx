@@ -7,6 +7,8 @@ import SignupForm from '@/components/SignupForm';
 const Signup = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
+    // Update document title
+    document.title = "Sign Up | BoltzAuth";
   }, []);
 
   return (
