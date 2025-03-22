@@ -1,9 +1,8 @@
 
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Bell, User, LogOut, Menu, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Bell, User, LogOut, Menu, X, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -12,32 +11,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-
-interface User {
-  email: string;
-  role: string;
-  firstName?: string;
-  lastName?: string;
-}
+import { useAuth } from '@/context/AuthContext';
 
 interface DashboardNavbarProps {
-  user: User;
+  user: {
+    email: string;
+    role: string;
+    firstName?: string;
+    lastName?: string;
+  };
 }
 
 const DashboardNavbar = ({ user }: DashboardNavbarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const navigate = useNavigate();
-  const { toast } = useToast();
+  const { signOut } = useAuth();
 
-  const handleLogout = () => {
-    localStorage.removeItem('boltzauth_user');
-    
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
-    });
-    
-    navigate('/login');
+  const handleLogout = async () => {
+    await signOut();
   };
 
   const displayName = user.firstName && user.lastName 
@@ -85,10 +75,16 @@ const DashboardNavbar = ({ user }: DashboardNavbarProps) => {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
-                  <Link to="/profile" className="w-full">Profile</Link>
+                  <Link to="/profile" className="w-full flex items-center">
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Profile</span>
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem>
-                  <Link to="/settings" className="w-full">Settings</Link>
+                  <Link to="/settings" className="w-full flex items-center">
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>

@@ -1,54 +1,43 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
 import ResellerDashboard from '@/components/dashboard/ResellerDashboard';
 import UserDashboard from '@/components/dashboard/UserDashboard';
 import DashboardNavbar from '@/components/dashboard/DashboardNavbar';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
-
-interface User {
-  email: string;
-  role: 'admin' | 'reseller' | 'user';
-  isLoggedIn: boolean;
-  firstName?: string;
-  lastName?: string;
-}
+import { useAuth } from '@/context/AuthContext';
 
 const Dashboard = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, profile, isLoading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is logged in
-    const storedUser = localStorage.getItem('boltzauth_user');
-    
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    } else {
-      // Redirect to login if not logged in
+    // Redirect to login if not logged in
+    if (!isLoading && !user) {
       navigate('/login');
     }
-    
-    setLoading(false);
-  }, [navigate]);
+  }, [user, isLoading, navigate]);
 
-  if (loading) {
+  if (isLoading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
 
-  if (!user) {
+  if (!user || !profile) {
     return null; // The navigate in useEffect will handle redirect
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100 dark:bg-gray-900">
-      <DashboardSidebar role={user.role} />
+      <DashboardSidebar role={profile.role} />
       
       <div className="flex flex-col flex-1 overflow-hidden">
-        <DashboardNavbar user={user} />
+        <DashboardNavbar user={{
+          email: user.email || '',
+          role: profile.role,
+          firstName: profile.first_name,
+          lastName: profile.last_name
+        }} />
         
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="mx-auto max-w-7xl">
@@ -57,9 +46,9 @@ const Dashboard = () => {
                 <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
               </div>
               
-              {user.role === 'admin' && <AdminDashboard />}
-              {user.role === 'reseller' && <ResellerDashboard />}
-              {user.role === 'user' && <UserDashboard />}
+              {profile.role === 'admin' && <AdminDashboard />}
+              {profile.role === 'reseller' && <ResellerDashboard />}
+              {profile.role === 'user' && <UserDashboard />}
             </div>
           </div>
         </main>

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Card, 
@@ -52,20 +51,11 @@ import {
   Clock, 
   Ban, 
   RefreshCw,
-  Filter,
   Download
 } from 'lucide-react';
-
-interface LicenseItem {
-  id: string;
-  key: string;
-  application: string;
-  user: string;
-  email: string;
-  created: string;
-  expires: string;
-  status: 'Active' | 'Expired' | 'Suspended';
-}
+import { useLicenses, License } from '@/hooks/useLicenses';
+import { useAuth } from '@/context/AuthContext';
+import { format } from 'date-fns';
 
 interface LicenseManagementProps {
   userRole: string;
@@ -73,73 +63,36 @@ interface LicenseManagementProps {
 
 const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [applicationFilter, setApplicationFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   
-  // Mock license data
-  const licensesData: LicenseItem[] = [
-    {
-      id: 'LIC-4930',
-      key: 'BOLTZ-A1B2C3-D4E5F6-G7H8I9',
-      application: 'Desktop App Pro',
-      user: 'John Smith',
-      email: 'john@example.com',
-      created: 'May 15, 2023',
-      expires: 'May 15, 2024',
-      status: 'Active'
-    },
-    {
-      id: 'LIC-4929',
-      key: 'BOLTZ-J1K2L3-M4N5O6-P7Q8R9',
-      application: 'Mobile Suite',
-      user: 'Emma Wilson',
-      email: 'emma@example.com',
-      created: 'April 20, 2023',
-      expires: 'April 20, 2024',
-      status: 'Active'
-    },
-    {
-      id: 'LIC-4928',
-      key: 'BOLTZ-S1T2U3-V4W5X6-Y7Z8A9',
-      application: 'Data Analyzer',
-      user: 'Michael Johnson',
-      email: 'michael@example.com',
-      created: 'March 10, 2023',
-      expires: 'March 10, 2024',
-      status: 'Active'
-    },
-    {
-      id: 'LIC-4927',
-      key: 'BOLTZ-B1C2D3-E4F5G6-H7I8J9',
-      application: 'Desktop App Pro',
-      user: 'Sophia Brown',
-      email: 'sophia@example.com',
-      created: 'February 5, 2023',
-      expires: 'February 5, 2023',
-      status: 'Expired'
-    },
-    {
-      id: 'LIC-4926',
-      key: 'BOLTZ-K1L2M3-N4O5P6-Q7R8S9',
-      application: 'Mobile Suite',
-      user: 'William Lee',
-      email: 'william@example.com',
-      created: 'January 15, 2023',
-      expires: 'January 15, 2024',
-      status: 'Suspended'
-    },
-  ];
+  // Form state for creating new license
+  const [newLicenseApp, setNewLicenseApp] = useState('Desktop App Pro');
+  const [newLicenseEmail, setNewLicenseEmail] = useState('');
+  const [newLicenseExpiration, setNewLicenseExpiration] = useState('1-year');
+  const [newLicenseQuantity, setNewLicenseQuantity] = useState(1);
+  
+  const { 
+    licenses, 
+    isLoading, 
+    error, 
+    createLicense, 
+    updateLicense, 
+    deleteLicense,
+    refreshLicenses 
+  } = useLicenses(userRole, user?.id || '');
 
   // Filter licenses based on search query and filters
-  const filteredLicenses = licensesData.filter(license => {
+  const filteredLicenses = licenses.filter(license => {
     // Search filter
     const matchesSearch = 
       license.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       license.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      license.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      license.email.toLowerCase().includes(searchQuery.toLowerCase());
+      (license.user_name && license.user_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (license.user_email && license.user_email.toLowerCase().includes(searchQuery.toLowerCase()));
     
     // Application filter
     const matchesApplication = 
@@ -155,7 +108,7 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
   });
 
   // All unique applications for the filter
-  const applications = [...new Set(licensesData.map(license => license.application))];
+  const applications = [...new Set(licenses.map(license => license.application))];
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text).then(
@@ -175,26 +128,116 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
     );
   };
 
-  const handleCreateLicense = () => {
-    toast({
-      title: "License Created",
-      description: "New license has been created successfully."
-    });
-    setIsCreateDialogOpen(false);
+  const handleCreateLicense = async () => {
+    try {
+      // Calculate expiration date based on selection
+      let expiresAt = null;
+      const now = new Date();
+      
+      if (newLicenseExpiration === '1-month') {
+        const expiry = new Date(now);
+        expiry.setMonth(expiry.getMonth() + 1);
+        expiresAt = expiry.toISOString();
+      } else if (newLicenseExpiration === '6-months') {
+        const expiry = new Date(now);
+        expiry.setMonth(expiry.getMonth() + 6);
+        expiresAt = expiry.toISOString();
+      } else if (newLicenseExpiration === '1-year') {
+        const expiry = new Date(now);
+        expiry.setFullYear(expiry.getFullYear() + 1);
+        expiresAt = expiry.toISOString();
+      }
+      // If lifetime, expiresAt remains null
+      
+      // Create the specified number of licenses
+      for (let i = 0; i < newLicenseQuantity; i++) {
+        await createLicense({
+          application: newLicenseApp,
+          userEmail: newLicenseEmail || undefined,
+          expiresAt: expiresAt || undefined,
+          status: 'Active'
+        });
+      }
+      
+      setIsCreateDialogOpen(false);
+      
+      // Reset form
+      setNewLicenseApp('Desktop App Pro');
+      setNewLicenseEmail('');
+      setNewLicenseExpiration('1-year');
+      setNewLicenseQuantity(1);
+      
+      refreshLicenses();
+    } catch (error) {
+      console.error('Error creating license:', error);
+    }
   };
 
-  const handleSuspendLicense = (licenseId: string) => {
-    toast({
-      title: "License Suspended",
-      description: `License ${licenseId} has been suspended.`
-    });
+  const handleSuspendLicense = async (license: License) => {
+    try {
+      const newStatus = license.status === 'Suspended' ? 'Active' : 'Suspended';
+      await updateLicense(license.id, { status: newStatus });
+      
+      toast({
+        title: newStatus === 'Suspended' ? "License Suspended" : "License Reactivated",
+        description: `License ${license.id} has been ${newStatus === 'Suspended' ? 'suspended' : 'reactivated'}.`
+      });
+    } catch (error) {
+      console.error('Error updating license status:', error);
+    }
   };
 
-  const handleDeleteLicense = (licenseId: string) => {
-    toast({
-      title: "License Deleted",
-      description: `License ${licenseId} has been deleted.`
-    });
+  const handleDeleteLicense = async (licenseId: string) => {
+    try {
+      await deleteLicense(licenseId);
+    } catch (error) {
+      console.error('Error deleting license:', error);
+    }
+  };
+
+  const handleExtendLicense = async (license: License, extensionPeriod: string) => {
+    try {
+      let newExpiresAt: Date;
+      
+      if (license.expires_at) {
+        // If there's an existing expiration date, extend from that
+        newExpiresAt = new Date(license.expires_at);
+      } else {
+        // Otherwise, extend from current date
+        newExpiresAt = new Date();
+      }
+      
+      // Add time based on selected period
+      if (extensionPeriod === '1-month') {
+        newExpiresAt.setMonth(newExpiresAt.getMonth() + 1);
+      } else if (extensionPeriod === '6-months') {
+        newExpiresAt.setMonth(newExpiresAt.getMonth() + 6);
+      } else if (extensionPeriod === '1-year') {
+        newExpiresAt.setFullYear(newExpiresAt.getFullYear() + 1);
+      } else if (extensionPeriod === 'lifetime') {
+        // For lifetime, set expires_at to null
+        await updateLicense(license.id, { expires_at: null });
+        
+        toast({
+          title: "License Extended",
+          description: "License has been extended to never expire."
+        });
+        
+        return;
+      }
+      
+      await updateLicense(license.id, { 
+        expires_at: newExpiresAt.toISOString(),
+        status: 'Active' // Reactivate if it was expired
+      });
+      
+      toast({
+        title: "License Extended",
+        description: `License expiration has been extended to ${format(newExpiresAt, 'PPP')}.`
+      });
+    } catch (error) {
+      console.error('Error extending license:', error);
+    }
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -213,6 +256,50 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
   // Different views for different user roles
   const isAdmin = userRole === 'admin';
   const isReseller = userRole === 'reseller';
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>License Management</CardTitle>
+            <CardDescription>Loading licenses...</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>License Management</CardTitle>
+            <CardDescription className="text-red-500">Error loading licenses</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-md p-4 text-red-800 dark:text-red-200">
+              {error}
+            </div>
+            <Button 
+              onClick={refreshLicenses} 
+              variant="outline" 
+              className="mt-4"
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -245,7 +332,10 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Application</label>
-                      <Select defaultValue="Desktop App Pro">
+                      <Select 
+                        value={newLicenseApp} 
+                        onValueChange={setNewLicenseApp}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select application" />
                         </SelectTrigger>
@@ -257,12 +347,19 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">User Email</label>
-                      <Input placeholder="user@example.com" />
+                      <label className="text-sm font-medium">User Email (Optional)</label>
+                      <Input 
+                        placeholder="user@example.com" 
+                        value={newLicenseEmail}
+                        onChange={(e) => setNewLicenseEmail(e.target.value)}
+                      />
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Expiration</label>
-                      <Select defaultValue="1-year">
+                      <Select 
+                        value={newLicenseExpiration}
+                        onValueChange={setNewLicenseExpiration}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select expiration period" />
                         </SelectTrigger>
@@ -276,7 +373,13 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Quantity</label>
-                      <Input type="number" defaultValue="1" min="1" max="100" />
+                      <Input 
+                        type="number" 
+                        value={newLicenseQuantity.toString()} 
+                        onChange={(e) => setNewLicenseQuantity(parseInt(e.target.value) || 1)}
+                        min="1" 
+                        max="100" 
+                      />
                     </div>
                   </div>
                   <DialogFooter>
@@ -355,14 +458,18 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
                       {isAdmin && (
                         <TableCell>
                           <div>
-                            {license.user}
+                            {license.user_name || 'No user assigned'}
                             <div className="text-sm text-gray-500 dark:text-gray-400">
-                              {license.email}
+                              {license.user_email || 'No email'}
                             </div>
                           </div>
                         </TableCell>
                       )}
-                      <TableCell>{license.expires}</TableCell>
+                      <TableCell>
+                        {license.expires_at 
+                          ? format(new Date(license.expires_at), 'MMM dd, yyyy')
+                          : 'Never'}
+                      </TableCell>
                       <TableCell>
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeClass(license.status)}`}>
                           {license.status}
@@ -384,11 +491,11 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
                             {(isAdmin || isReseller) && (
                               <>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleExtendLicense(license, '1-year')}>
                                   <Clock className="mr-2 h-4 w-4" />
-                                  <span>Extend</span>
+                                  <span>Extend 1 Year</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleSuspendLicense(license.id)}>
+                                <DropdownMenuItem onClick={() => handleSuspendLicense(license)}>
                                   {license.status === 'Suspended' ? (
                                     <>
                                       <RefreshCw className="mr-2 h-4 w-4" />
@@ -426,7 +533,7 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
         </CardContent>
         <CardFooter className="flex justify-between border-t pt-4">
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            Showing {filteredLicenses.length} of {licensesData.length} licenses
+            Showing {filteredLicenses.length} of {licenses.length} licenses
           </div>
           <Button variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
@@ -439,3 +546,4 @@ const LicenseManagement = ({ userRole }: LicenseManagementProps) => {
 };
 
 export default LicenseManagement;
+
