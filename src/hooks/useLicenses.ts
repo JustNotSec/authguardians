@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -49,12 +48,9 @@ export const useLicenses = (userRole: string, userId: string) => {
         )
       `);
 
-      // No additional filters for admin, they can see all
       if (userRole === 'reseller') {
-        // Resellers see licenses they created
         query = query.eq('created_by', userId);
       } else if (userRole === 'user') {
-        // Users see only their licenses
         query = query.eq('user_id', userId);
       }
 
@@ -62,16 +58,8 @@ export const useLicenses = (userRole: string, userId: string) => {
 
       if (fetchError) throw fetchError;
 
-      // Process the data to format it correctly
       const processedData = data?.map(license => {
-        // Safe type handling - check if profiles is an actual profile or an error
-        let userProfile: UserProfile | null = null;
-        
-        if (license.profiles && 
-            typeof license.profiles === 'object' && 
-            !('error' in license.profiles)) {
-          userProfile = license.profiles as UserProfile;
-        }
+        const profiles = license.profiles as UserProfile | null;
         
         const formattedLicense: License = {
           id: license.id,
@@ -81,13 +69,11 @@ export const useLicenses = (userRole: string, userId: string) => {
           created_by: license.created_by,
           created_at: license.created_at,
           expires_at: license.expires_at,
-          // Ensure status is one of the allowed values
           status: (license.status as 'Active' | 'Expired' | 'Suspended') || 'Active',
           metadata: license.metadata,
-          // Safely access user email and name with null checks
-          user_email: userProfile?.email?.email || 'No user assigned',
-          user_name: userProfile?.first_name && userProfile?.last_name
-            ? `${userProfile.first_name} ${userProfile.last_name}`
+          user_email: profiles?.email?.email || 'No user assigned',
+          user_name: profiles?.first_name && profiles?.last_name
+            ? `${profiles.first_name} ${profiles.last_name}`
             : 'No user assigned'
         };
         
@@ -115,11 +101,9 @@ export const useLicenses = (userRole: string, userId: string) => {
     status?: 'Active' | 'Suspended';
   }) => {
     try {
-      // First, check if the user exists
       let userId = null;
       
       if (data.userEmail) {
-        // Instead of querying auth.users directly, query the profiles table
         const { data: userData, error: userError } = await supabase
           .from('profiles')
           .select(`
@@ -140,7 +124,6 @@ export const useLicenses = (userRole: string, userId: string) => {
         }
       }
       
-      // Generate a license key
       const { data: keyData, error: keyError } = await supabase
         .rpc('generate_license_key');
         
@@ -168,7 +151,6 @@ export const useLicenses = (userRole: string, userId: string) => {
         description: 'New license has been created successfully.'
       });
       
-      // Refresh the licenses
       fetchLicenses();
       
       return newLicense;
@@ -197,7 +179,6 @@ export const useLicenses = (userRole: string, userId: string) => {
         description: 'License has been updated successfully.'
       });
       
-      // Refresh the licenses
       fetchLicenses();
     } catch (err: any) {
       console.error('Error updating license:', err);
@@ -224,7 +205,6 @@ export const useLicenses = (userRole: string, userId: string) => {
         description: 'License has been deleted successfully.'
       });
       
-      // Refresh the licenses
       fetchLicenses();
     } catch (err: any) {
       console.error('Error deleting license:', err);
@@ -239,7 +219,6 @@ export const useLicenses = (userRole: string, userId: string) => {
 
   useEffect(() => {
     fetchLicenses();
-    // Listen for changes to the licenses table
     const channel = supabase
       .channel('schema-db-changes')
       .on(
