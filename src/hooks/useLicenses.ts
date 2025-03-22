@@ -84,6 +84,7 @@ export const useLicenses = (userRole: string, userId: string) => {
           // Ensure status is one of the allowed values
           status: (license.status as 'Active' | 'Expired' | 'Suspended') || 'Active',
           metadata: license.metadata,
+          // Safely access user email and name with null checks
           user_email: userProfile?.email?.email || 'No user assigned',
           user_name: userProfile?.first_name && userProfile?.last_name
             ? `${userProfile.first_name} ${userProfile.last_name}`
