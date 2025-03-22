@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -36,17 +37,8 @@ export const useLicenses = (userRole: string, userId: string) => {
     setError(null);
 
     try {
-      let query = supabase.from('licenses').select(`
-        *,
-        profiles:user_id (
-          id,
-          first_name,
-          last_name,
-          email:id (
-            email
-          )
-        )
-      `);
+      // First, let's query just the licenses without the join that's causing issues
+      let query = supabase.from('licenses').select('*');
 
       if (userRole === 'reseller') {
         query = query.eq('created_by', userId);
@@ -54,12 +46,39 @@ export const useLicenses = (userRole: string, userId: string) => {
         query = query.eq('user_id', userId);
       }
 
-      const { data, error: fetchError } = await query;
+      const { data: licensesData, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
-
-      const processedData = data?.map(license => {
-        const profiles = license.profiles as UserProfile | null;
+      
+      // Now if we need user profile data, fetch it separately for licenses with a user_id
+      const processedData: License[] = [];
+      
+      for (const license of licensesData || []) {
+        let userEmail = 'No user assigned';
+        let userName = 'No user assigned';
+        
+        if (license.user_id) {
+          // Fetch the profile for this user_id
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select(`
+              id,
+              first_name,
+              last_name,
+              email:id (
+                email
+              )
+            `)
+            .eq('id', license.user_id)
+            .maybeSingle();
+            
+          if (!profileError && profileData) {
+            userEmail = profileData.email?.email || 'No email';
+            userName = profileData.first_name && profileData.last_name 
+              ? `${profileData.first_name} ${profileData.last_name}`
+              : 'User';
+          }
+        }
         
         const formattedLicense: License = {
           id: license.id,
@@ -71,15 +90,13 @@ export const useLicenses = (userRole: string, userId: string) => {
           expires_at: license.expires_at,
           status: (license.status as 'Active' | 'Expired' | 'Suspended') || 'Active',
           metadata: license.metadata,
-          user_email: profiles?.email?.email || 'No user assigned',
-          user_name: profiles?.first_name && profiles?.last_name
-            ? `${profiles.first_name} ${profiles.last_name}`
-            : 'No user assigned'
+          user_email: userEmail,
+          user_name: userName
         };
         
-        return formattedLicense;
-      }) || [];
-
+        processedData.push(formattedLicense);
+      }
+      
       setLicenses(processedData);
     } catch (err: any) {
       console.error('Error fetching licenses:', err);
