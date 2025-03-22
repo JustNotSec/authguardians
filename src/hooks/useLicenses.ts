@@ -64,7 +64,14 @@ export const useLicenses = (userRole: string, userId: string) => {
 
       // Process the data to format it correctly
       const processedData = data?.map(license => {
-        const userProfile = license.profiles as UserProfile | null;
+        // Safe type handling - check if profiles is an actual profile or an error
+        let userProfile: UserProfile | null = null;
+        
+        if (license.profiles && 
+            typeof license.profiles === 'object' && 
+            !('error' in license.profiles)) {
+          userProfile = license.profiles as UserProfile;
+        }
         
         const formattedLicense: License = {
           id: license.id,
