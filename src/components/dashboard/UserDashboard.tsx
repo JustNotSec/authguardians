@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -43,7 +42,6 @@ const UserDashboard = () => {
           description: "License key has been copied."
         });
         
-        // Reset the copied state after 2 seconds
         setTimeout(() => {
           setCopied({ ...copied, [id]: false });
         }, 2000);
@@ -69,9 +67,6 @@ const UserDashboard = () => {
     }
     
     try {
-      // Here we would typically make an API call to activate the license
-      // Since we're using Supabase this would involve functions or RLS
-      // For now we'll just show a success message
       toast({
         title: "License Activated",
         description: "Your license key has been successfully activated."

@@ -8,13 +8,22 @@ export interface License {
   key: string;
   application: string;
   user_id: string | null;
-  created_by: string;
-  created_at: string;
+  created_by: string | null;
+  created_at: string | null;
   expires_at: string | null;
   status: 'Active' | 'Expired' | 'Suspended';
   metadata: any;
   user_email?: string;
   user_name?: string;
+}
+
+interface UserProfile {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email?: {
+    email: string;
+  } | null;
 }
 
 export const useLicenses = (userRole: string, userId: string) => {
@@ -55,15 +64,26 @@ export const useLicenses = (userRole: string, userId: string) => {
 
       // Process the data to format it correctly
       const processedData = data?.map(license => {
-        const userProfile = license.profiles as any;
+        const userProfile = license.profiles as UserProfile | null;
         
-        return {
-          ...license,
+        const formattedLicense: License = {
+          id: license.id,
+          key: license.key,
+          application: license.application,
+          user_id: license.user_id,
+          created_by: license.created_by,
+          created_at: license.created_at,
+          expires_at: license.expires_at,
+          // Ensure status is one of the allowed values
+          status: (license.status as 'Active' | 'Expired' | 'Suspended') || 'Active',
+          metadata: license.metadata,
           user_email: userProfile?.email?.email || 'No user assigned',
           user_name: userProfile?.first_name && userProfile?.last_name
             ? `${userProfile.first_name} ${userProfile.last_name}`
             : 'No user assigned'
         };
+        
+        return formattedLicense;
       }) || [];
 
       setLicenses(processedData);
@@ -91,14 +111,20 @@ export const useLicenses = (userRole: string, userId: string) => {
       let userId = null;
       
       if (data.userEmail) {
+        // Instead of querying auth.users directly, query the profiles table
         const { data: userData, error: userError } = await supabase
-          .from('auth.users')
-          .select('id')
-          .eq('email', data.userEmail)
-          .single();
+          .from('profiles')
+          .select(`
+            id,
+            email:id (
+              email
+            )
+          `)
+          .eq('id.email', data.userEmail)
+          .maybeSingle();
           
-        if (userError && userError.code !== 'PGRST116') {
-          throw userError;
+        if (userError) {
+          console.error('Error finding user:', userError);
         }
         
         if (userData) {
