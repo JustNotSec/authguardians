@@ -15,7 +15,7 @@ interface VerifyLicenseResult {
     licenseId: string;
     application: string;
     status: string;
-    expiresAt: string;
+    expiresAt: string | null;
   };
 }
 

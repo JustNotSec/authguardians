@@ -1,6 +1,6 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.21.0'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.23.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,10 +10,9 @@ const corsHeaders = {
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders })
   }
 
-  // Get the license key from the request
   try {
     const { licenseKey, applicationName, hwid } = await req.json()
 
@@ -23,113 +22,87 @@ serve(async (req) => {
           success: false, 
           message: 'License key is required' 
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
+          status: 400,
         }
       )
     }
 
-    // Initialize Supabase client with service role key
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    // Create a Supabase client with the service role key
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Get the license from the database
+    // Get the license
     const { data: license, error } = await supabase
       .from('licenses')
       .select('*')
       .eq('key', licenseKey)
       .single()
 
-    if (error) {
+    if (error || !license) {
       return new Response(
         JSON.stringify({ 
           success: false, 
           message: 'Invalid license key' 
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 404 
+          status: 404,
         }
       )
     }
 
-    // Check if the license is for the right application
+    // Check if the application matches if specified
     if (applicationName && license.application !== applicationName) {
       return new Response(
         JSON.stringify({ 
           success: false, 
           message: 'License key is not valid for this application' 
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 403 
+          status: 403,
         }
       )
     }
 
-    // Check if the license is expired
+    // Check license status
+    if (license.status !== 'Active') {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: `License is ${license.status.toLowerCase()}` 
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403,
+        }
+      )
+    }
+
+    // Check expiration
     if (license.expires_at && new Date(license.expires_at) < new Date()) {
-      // Update license status to expired if it's not already
-      if (license.status !== 'Expired') {
-        await supabase
-          .from('licenses')
-          .update({ status: 'Expired' })
-          .eq('id', license.id)
-      }
-      
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'License key has expired' 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 403 
-        }
-      )
-    }
-
-    // Check if the license is suspended
-    if (license.status === 'Suspended') {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'License key is suspended' 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 403 
-        }
-      )
-    }
-
-    // Hardware ID check - if HWID is provided and stored in metadata, check it
-    if (hwid && license.metadata?.hwid && license.metadata.hwid !== hwid) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'Hardware ID mismatch' 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 403 
-        }
-      )
-    }
-
-    // If HWID is provided but not stored, store it
-    if (hwid && (!license.metadata?.hwid)) {
-      const metadata = { ...license.metadata, hwid }
-      
+      // Update license status to expired
       await supabase
         .from('licenses')
-        .update({ metadata })
+        .update({ status: 'Expired' })
         .eq('id', license.id)
+        
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: 'License has expired' 
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403,
+        }
+      )
     }
 
-    // Log the verification
+    // Log the API call
     await supabase
       .from('api_logs')
       .insert({
@@ -138,15 +111,16 @@ serve(async (req) => {
         ip_address: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip'),
         user_agent: req.headers.get('user-agent'),
         metadata: {
-          hwid: hwid || null
+          hwid: hwid || null,
+          application: applicationName || null
         }
       })
 
-    // Return success
+    // Return success response
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'License key is valid',
+      JSON.stringify({
+        success: true,
+        message: 'License verified successfully',
         data: {
           licenseId: license.id,
           application: license.application,
@@ -154,22 +128,20 @@ serve(async (req) => {
           expiresAt: license.expires_at
         }
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+        status: 200,
       }
     )
-  } catch (error) {
-    console.error('Error in verify-license function:', error)
-    
+  } catch (err) {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        message: 'Internal server error' 
+        message: `Server error: ${err.message}` 
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 500,
       }
     )
   }
