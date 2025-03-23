@@ -40,13 +40,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Error fetching profile:', error);
         return null;
       }
 
+      console.log('Profile fetched successfully:', data);
       return data as Profile;
     } catch (err) {
       console.error('Error in fetchProfile:', err);
@@ -64,12 +65,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (event, newSession) => {
         console.log('Auth state changed:', event, !!newSession);
         setSession(newSession);
-        setUser(newSession?.user ?? null);
-
+        
         if (newSession?.user) {
+          setUser(newSession.user);
+          console.log('Fetching profile for user ID:', newSession.user.id);
           const profile = await fetchProfile(newSession.user.id);
           setProfile(profile);
         } else {
+          setUser(null);
           setProfile(null);
         }
 
@@ -81,11 +84,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
       console.log('Initial session check:', !!currentSession);
       setSession(currentSession);
-      setUser(currentSession?.user ?? null);
-
+      
       if (currentSession?.user) {
+        setUser(currentSession.user);
+        console.log('Fetching profile for user ID:', currentSession.user.id);
         const profile = await fetchProfile(currentSession.user.id);
         setProfile(profile);
+      } else {
+        setUser(null);
+        setProfile(null);
       }
 
       setIsLoading(false);
