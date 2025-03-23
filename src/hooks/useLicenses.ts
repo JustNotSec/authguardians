@@ -61,19 +61,19 @@ export const useLicenses = (userRole: string, userId: string) => {
           // Fetch the profile for this user_id
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
-            .select(`
-              id,
-              first_name,
-              last_name,
-              email:id (
-                email
-              )
-            `)
+            .select('id, first_name, last_name')
             .eq('id', license.user_id)
             .maybeSingle();
             
           if (!profileError && profileData) {
-            userEmail = profileData.email?.email || 'No email';
+            // Then try to fetch email separately if needed
+            const { data: emailData } = await supabase
+              .from('profiles')
+              .select('email')
+              .eq('id', license.user_id)
+              .maybeSingle();
+              
+            userEmail = emailData?.email || 'No email';
             userName = profileData.first_name && profileData.last_name 
               ? `${profileData.first_name} ${profileData.last_name}`
               : 'User';
